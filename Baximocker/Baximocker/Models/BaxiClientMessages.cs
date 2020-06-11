@@ -87,6 +87,14 @@ namespace Baximocker.Models
           </Dfs13LocalMode>
         </NetsResponse>";
 
+        public const string ErrorPayment = @"<?xml version=""1.0"" encoding=""UTF-8""?>
+        <NetsResponse>
+         <MessageHeader ECRID=""ECR1"" TerminalID=""Terminal1"" VersionNumber=""1"" />
+         <Dfs13Error>
+            <ErrorCode>7012</ErrorCode>
+            <ErrorString>ERR_UNEXPECTED_TERMINAL_FRAME</ErrorString>
+         </Dfs13Error>
+        </NetsResponse>";
       
 
         /// <summary>
