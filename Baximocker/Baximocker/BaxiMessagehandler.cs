@@ -7,6 +7,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
 using System.Xml;
+using Baximocker.Enums;
 using Baximocker.Interfaces;
 using Microsoft.AspNetCore.Builder;
 using Baximocker.Models;
@@ -25,11 +26,7 @@ namespace Baximocker
     public class BaxiMessagehandler: WebSocketBehavior
     {
         public List<CardPayment> ActivePayments = new List<CardPayment>();
-
-        private static int TransActionOK = 0;
-        private static int AdminTransActionOK = 1;
-        private bool PaymentWillSucceed = true;
-        private int PaymentId = 0;
+        private int PaymentId;
         protected override void OnMessage(MessageEventArgs e)
         {
             var message = e.Data;
@@ -41,48 +38,48 @@ namespace Baximocker
             {
                 var xmlMessage = GetMessageXMLFromData(e.RawData);
                 HandleMessage(xmlMessage);
-
             }
-
-        
-
         }
 
         private void HandleMessage(XmlDocument xmlMessage)
         {
-            int transactionType = 0;
+            BaxiTransferType transactionType = BaxiTransferType.Purchase;
             var transactionTypeNode = xmlMessage.SelectSingleNode("NetsRequest/Dfs13TransferAmount/TransactionType");
             if (transactionTypeNode != null)
             {
               var  transactionTypeString = transactionTypeNode.InnerText;
-              transactionType = int.Parse(transactionTypeString);
+              transactionType = (BaxiTransferType)int.Parse(transactionTypeString);
             }
 
-            if (transactionType == 48)
+            if (transactionType == BaxiTransferType.Purchase)
             {
-                var terminalID = long.Parse( xmlMessage.SelectSingleNode("NetsRequest/MessageHeader/@TerminalID").InnerText);
-                var payment = new CardPayment
-                {
-                    TerminalId  = terminalID,
-                    PaymentId = PaymentId
-                };
-                ActivePayments.Add(payment);
-                PaymentId++;
+                var terminalId = long.Parse(xmlMessage.SelectSingleNode("NetsRequest/MessageHeader/@TerminalID").InnerText);
+                AddActivePayment(terminalId);
+              
                 Console.WriteLine("Will this payment (S)ucceed or (F)ail?");
                 var response = Console.ReadKey();
                 if (response.Key == ConsoleKey.S)
                 {
-                    SetPaymentAsSuccessful(terminalID);
+                    SetPaymentAsSuccessful(terminalId);
                 }
                 else
                 {
-                    SetPaymentAsFailed(terminalID);
+                    SetPaymentAsFailed(terminalId);
                 }
             }
             
         }
 
-      
+        private void AddActivePayment(long terminalId)
+        {
+            var payment = new CardPayment
+            {
+                TerminalId = terminalId,
+                PaymentId = PaymentId
+            };
+            ActivePayments.Add(payment);
+            PaymentId++;
+        }
 
 
         private XmlDocument GetMessageXMLFromData(byte[] rawData)
@@ -104,32 +101,41 @@ namespace Baximocker
 
         private void SetPaymentAsFailed( long terminalId)
         {
-            var payment = ActivePayments.First(ap => ap.TerminalId == terminalId);
-            ActivePayments.Remove(payment);
+            RemovePayment(terminalId);
+
             var errorMessage = new XmlDocument();
             errorMessage.LoadXml(BaxiClientMessages.ErrorPayment);
-            var terminalNode = errorMessage.SelectSingleNode("NetsResponse/MessageHeader/@TerminalID");
-            var errorNode = errorMessage.SelectSingleNode("NetsResponse/Dfs13Error/ErrorString");
-            errorNode.InnerText = terminalId.ToString();
 
-            //send as Byte array
+            SetNodeText(errorMessage, "NetsResponse/MessageHeader/@TerminalID", terminalId.ToString());
+            SetNodeText(errorMessage, "NetsResponse/Dfs13Error/ErrorString",terminalId.ToString());
+
+            //receiving end expects raw byte array
             Send(Encoding.Default.GetBytes(errorMessage.OuterXml));
         }
         private void SetPaymentAsSuccessful(long terminalId)
         {
+            RemovePayment(terminalId);
+
+            var successfulMessage = new XmlDocument();
+            successfulMessage.LoadXml(BaxiClientMessages.SuccessfulPayment);
+
+            SetNodeText(successfulMessage, "NetsResponse/Dfs13LocalMode/Result", BaxiTransActionResult.TransactionOK.ToString());
+            SetNodeText(successfulMessage, "NetsResponse/Dfs13LocalMode/TerminalID",terminalId.ToString());
+
+            //receiving end expects raw byte array
+            Send(Encoding.Default.GetBytes(successfulMessage.OuterXml));
+        }
+
+        private void SetNodeText( XmlDocument document, string nodePath, string nodeValue)
+        {
+            var node = document.SelectSingleNode(nodePath);
+            node.InnerText = nodeValue;
+        }
+
+        private void RemovePayment(long terminalId)
+        {
             var payment = ActivePayments.First(ap => ap.TerminalId == terminalId);
             ActivePayments.Remove(payment);
-            var successfulmMessage = new XmlDocument();
-            successfulmMessage.LoadXml(BaxiClientMessages.SuccessfulPayment);
-            //set node values
-            var resultNode = successfulmMessage.SelectSingleNode("NetsResponse/Dfs13LocalMode/Result");
-
-            resultNode.InnerText = TransActionOK.ToString();
-
-            var terminalNode = successfulmMessage.SelectSingleNode("NetsResponse/Dfs13LocalMode/TerminalID");
-            terminalNode.InnerText = terminalId.ToString();
-            //receiving end expects raw byte array
-            Send(Encoding.Default.GetBytes(successfulmMessage.OuterXml));
         }
     }
 
