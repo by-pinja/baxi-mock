@@ -7,4 +7,7 @@ is configured in payment service.
 
 ## how can I simulate successful payment?
 Start making payment while this is running on background. After payment is waiting for response,
-console will ask from you whether to set payment as success or as fail. Press respective button and Voila!
+console will ask from you whether to set payment as success or as fail. Press respective button (S) and Voila!
+
+## How can I simulate failed payment?
+Just like successful payment, just press F instead!
